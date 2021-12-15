@@ -1,0 +1,562 @@
+---
+title: "Tools for Testing Theories"
+author: 
+  - "Aaron Peikert"
+date: 'LIP Colloquium | `r Sys.Date()`'
+output:
+  xaringan::moon_reader:
+    css: xaringan-themer.css
+    nature:
+      slideNumberFormat: "%current%"
+      highlightStyle: github
+      highlightLines: true
+      ratio: 16:9
+      countIncrementalSlides: true
+---
+class: inverse, center, middle
+
+# Why does preregistration work?
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(
+  fig.width=9, fig.height=4, fig.retina=3,
+  out.width = "100%",
+  cache = FALSE,
+  echo = TRUE,
+  message = FALSE, 
+  warning = FALSE,
+  hiline = TRUE,
+  dev = "svglite"
+)
+library("tidyverse")
+library("patchwork")
+library("xaringanthemer")
+library("svglite")
+```
+
+```{r xaringan-themer, include=FALSE, warning=FALSE}
+style_duo(
+  primary_color = "#024959",
+  secondary_color = "#F28705",
+  header_font_google = google_font("Didact Gothic", "400", "400i"),
+  text_font_google   = google_font("IBM Plex Sans", "400", "400i")
+  )
+```
+
+---
+
+## Contributors
+
+ - Andreas M. Brandmaier (MPIB)
+ - Maximilian S. Ernst (MPIB)
+ - Caspar J. Van Lissa (Utrecht University)
+
+--
+
+## Foundations
+
+Nosek, B. A., Ebersole, C. R., DeHaven, A. C., &amp; Mellor, D. T. (2018). The preregistration revolution. *Proceedings of the National Academy of Sciences*, *115* (11), 2600–2606. https://doi.org/10.1073/pnas.1708274114
+
+Meehl, P. E. (1978). Theoretical risks and tabular asterisks: Sir Karl, Sir Ronald, and the slow progress of soft psychology. *Journal of Consulting and Clinical Psychology*, *46*(4), 806–834. https://doi.org/10.1037/0022-006X.46.4.806
+
+---
+
+## Some Intuition
+
+### Aaron has a theory about celestial bodies.
+
+--
+
+#### My theory predicts that the sun comes up tomorrow morning and it actually does.
+
+--
+
+*Conclusion: My theory has not gained much from the evidence. That the sun comes up in the morning is likely under any other theory of celestial bodies.*
+
+--
+
+#### My theory also predicts a solar eclipse when no other theory does and I am right.
+
+--
+
+*Conclusion: My theory has gained much from the evidence. Its a damn strange coincidence that I predict this and it does happen.*
+
+---
+background-image: url("https://upload.wikimedia.org/wikipedia/commons/c/c7/Solar_eclipse_1999_4.jpg")
+background-size: contain
+background-color: #000000
+class: bottom
+
+[Solar eclipse 1999 in France](https://commons.wikimedia.org/wiki/File:Solar_eclipse_1999_4.jpg) by [Luc Viatour](https://lucnix.be/) licensed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)
+---
+
+## Some Formulas
+
+Lets say we assign a probability to our hypothesis (H) before and after observing the evidence (E):
+
+$$
+p_2(H) = p_1(H|E)
+$$
+
+--
+
+But we only observe the evidence, therefore, $p(E|H)$. How do we get $p(H|E)$?
+
+--
+
+Applying Bayes theorem:
+
+$$
+p_2(H) = \frac{p_1(H)p_1(E|H)}{p_1(H)p_1(E|H) + p_1(\neg{}H)p_1(E|\neg{}H)}
+$$
+
+This does not mean we have to use Bayes statistics!
+
+---
+
+## How does this help?
+
+Our hypothesis therefore gains when:
+
+$$
+p_1(E|H) \gg p_1(E|\neg{}H)
+$$
+--
+
+In other words, evidence contributes the most if it is *unlikely to observe without the theory*, but *likely under the theory*.
+
+The damn strange coincidence strikes again.
+
+---
+
+## Relation to Nil hypothesis testing
+
+*If* our Hypothesis equals the statistical Hypothesis of e.g., a t-test, than $\neg{}H$ is the Null hypothesis, therefore:
+
+$$
+p_1(E|\neg{}H) = \alpha\text{-error}
+$$
+
+$$
+p_1(E|H) = (1-\beta\text{-error}) = \text{power}
+$$
+
+Therefore there is gain when:
+
+$$
+\text{power} \gg \alpha\text{-error}
+$$
+
+--
+
+### Unfortunately...
+
+is the a priori propability of the hypothesis that there is literally **no correlation** etc. infinitesimal small (in psychology).
+
+$$p_1(H)\to 1$$
+
+So our gain is infinitesimal small.
+
+---
+
+## The effect of theorethical risk
+
+```{r, include=FALSE, cache=TRUE}
+bayes <- function(h1, power, alpha, ...) {
+  (h1 * power) / (h1 * power + (1 - h1) * alpha)
+}
+uncertain_bayes <- function(h1, power, alpha, alpha_upper = 1, ...) {
+  mean(bayes(h1, power, runif(1e6, alpha, alpha_upper)))
+}
+
+step <- 0.01
+vary_alpha <-
+  tidyr::expand_grid(
+    h1 = .1,
+    power = .8,
+    alpha = seq(step, 1 - step, step)
+  ) %>% 
+  dplyr::mutate(.,
+    certain = purrr::pmap_dbl(., bayes),
+    uncertain = purrr::pmap_dbl(., uncertain_bayes)
+  ) %>% 
+  pivot_longer(c(certain, uncertain),
+               names_to = "certainty",
+               values_to = "h2")
+```
+
+
+```{r, include=FALSE}
+
+plot_base <- vary_alpha %>%
+  ggplot(aes(alpha, h2)) + geom_line() +
+  theme_xaringan() +
+  scale_xaringan_fill_discrete() +
+  lims(x = c(0, 1), y = 0:1) +
+  labs(caption = "H1 = .1, power = .8")
+
+plot_certain <- plot_base %+%
+  filter(vary_alpha, certainty == "certain")
+
+plot_uncertain <- plot_base %+%
+  filter(vary_alpha, certainty == "uncertain")
+
+plot_both <- plot_base + aes(alpha, h2, color = certainty)
+
+plots <- list(uncertain = plot_uncertain, certain = plot_certain, both = plot_both)
+dim_both <- get_dim(plots$both)
+plots_aligned <- map(plots, ~set_dim(.x, dim_both))
+```
+
+```{r, echo=FALSE}
+plot(plots$certain)
+```
+
+--
+
+### It is important to know $p_1(E|\neg{}H)$
+
+---
+## How do we know $p_1(E|\neg{}H)$?
+
+Often we use formal statistical properties (remember, e.g. the $\alpha\text{-error}$).
+
+--
+
+But they only provide a **lower bound** (it can not be lower).
+If anything, we need an upper bound.
+
+Anything that a researcher does, beyond the statistical model, must increase $p_1(E|\neg{}H)$.
+
+We are therefore uncertain:
+
+$$
+.05 > p_1(E|\neg{}H) > 1
+$$
+
+--
+
+### So what? Nothing is ever certain.
+
+Lets find out:
+
+$$
+\mathbb{E}(p_2(H)) = \int \frac{p(H)p(E|H)}{p(H)p(E|H)+p(\neg H) p(E|\neg H) } \; \text{d}\; \mathbb{P}(p(E|\neg H))
+$$
+
+---
+
+## What if are uncertain about $p_1(E|\neg{}H)$?
+
+```{r, echo=FALSE}
+plot(plots$both)
+```
+
+---
+class: center middle inverse
+
+### Preregistraions are removing uncertainty about the theorethical risk.
+
+---
+## Summary
+
+1. The theoretical risk is important to judge the evidence.
+2. We only know the theoretical risk through formal statistical properties.
+3. Anything else introduces uncertainty which diminishes the power of the evidence.
+--
+
+4. Research without preregistration has maximal uncertainty, therefore, minimizes the power of evidence.
+
+--
+5. A perfect preregistration eliminates all uncertainty, therefore, maximizes the power of evidence
+
+---
+## What makes a good preregistration?
+
+One that reduces uncertainty:
+
+1. Precision
+--
+
+2. Precision
+3. Precision
+
+---
+## What if we have to deviate from the preregistration?
+
+If we deviate from the preregistration, we introduce **uncertainty** about the theoretical risk.
+
+--
+
+An apparent tradeoff:
+
+1. Precise preregistration with high likelihood of deviation.
+2. Vague preregistration with low likelihood of deviation
+
+
+---
+### Uncertainty through deviation
+
+Deviation is unclear to the reader → high uncertainty
+
+Deviation is transparent and well grounded → low uncertainty
+
+```{r, echo=FALSE, fig.height=3.5}
+plot(plots$both)
+```
+
+---
+class: center middle inverse
+
+# BUT
+
+---
+class: center middle
+
+## 1. Preregistrations are difficult to compare.
+
+## 2. Preregistrations are difficult to produce.
+
+---
+class: center middle inverse
+
+# Consuming Preregistrations
+---
+
+## Compare preregistrations and result
+
+* Preregistration differ in their verbosity 🠒 **level of detail**
+* Is the substance changed or just the wording? 🠒 **ambiguity**
+* Authors can pick and choose interpretations  🠒 **multi interpretable**
+
+--
+
+## When is a preregistration successfull?
+
+* journals have varying criteria for the badge "preregistered"
+* something is preregistered because:
+  * preregistration exists
+  * authors themselves declare it preregistered
+  * peer reviewed comparison
+
+--
+
+**Readers must decide for themselves.**
+
+---
+class: center
+
+# Natural Language vs Computer Code
+
+.pull-left[
+
+### Natural Language
+
+varying level of detail
+
+ambigue
+
+multi interpretable
+
+]
+
+.pull-right[
+
+### Code
+
+comprehensive
+
+comparible
+
+executable
+
+]
+
+---
+
+# Version Control
+
+```{r, echo=FALSE}
+Sys.setenv(CHROMOTE_CHROME = "google-chrome-stable")
+webshot2::webshot(
+  "https://github.com/aaronpeikert/repro-tutorial/commit/e80e128f43ca90f7417cb155d5f1d6605c78fec3",
+  zoom = 2,
+  selector = "div#diff-a9a4aad3fa8c9c10c5404b632bc3a01a25d2d8430eb932bc35c76769963e4b70"
+)
+knitr::include_graphics("webshot.png")
+```
+
+---
+# Conclusion
+
+Problem:
+
+* A preregistration is difficult to compare to the resulting publication
+
+Solution:
+
+* Write code under version control instead of verbal preregistration
+
+Upside:
+
+* Researchers write code to analyze their data anyway
+* Code is precise
+* Changes to the preregistration are obvious
+* the merits of these changes can be judged by the readers
+
+Downside:
+
+* Researchers must be able to understand the code
+
+---
+class: center middle inverse
+
+# Producing Preregistrations
+---
+# Writing Standards
+
+* Preregistrations form their own novel scientific writing format
+* Scientific writing is a skill that requires much training to master
+* but there are no unifying standards on how to write a preregistration
+
+#### Solution: Simply write a journal article and follow the established standards
+
+---
+### Excuse me, do you have a minute to talk about reproducibility?
+
+#### Automated reproducibility: One command and all results are recalculated and inserted into the manuscript.
+
+Reproducibility requires:
+
+1. Version control
+2. Dynamic document generation
+3. Dependency tracking
+4. Software management
+
+.right[—Peikert, A., & Brandmaier, A. M. (2021)]
+
+.footnote[Peikert & Brandmaier (2021). A Reproducible Data Analysis Workflow. *Quantitative and Computational Methods in Behavioral Sciences*, 1, e3763. https://doi.org/10.5964/qcmb.3763
+]
+
+--
+
+This technology allows researchers to write the bulk of the manuscript as a dynamic document, including typical sections like Introduction, Methods, and Results to form a preregistration.  
+---
+class: center
+# All in one
+
+.pull-left[
+
+### Standard Preregistration
+
+hunches
+
+↓
+
+preregistration
+
+↓
+
+data
+
+↓
+
+article draft
+]
+
+.pull-right[
+### Preregistration as Code
+
+simulated data
+
+↓
+
+article draft with mock results
+
+↓
+
+data
+
+↓
+
+article draft with real results
+
+]
+---
+# Wait a moment...
+
+> This technology allows researchers to write the bulk of the manuscript as a dynamic document, including typical sections like Introduction, Methods, and **Results** to form a preregistration.  
+
+--
+
+—
+
+Q: How can I write the whole manuscript including results *before* gathering data?  
+A: The dynamic document is first fed simulated data and than the real data.
+
+—
+
+Q: But than we do not have a separate preregistration?  
+A: Nope, no separate preregistration. The publication has a preregistration phase with explicitly marked mock results based on simulated data and is directly turned into an actual publication by adding the real data and a discussion of the results.
+
+---
+class: center middle
+
+### Preregistration as Code 
+
+#### =
+
+#### code
+
+#### +
+
+#### dynamic article draft 
+
+#### +
+
+#### reproducible
+
+---
+# Misunderstanding I:
+
+### Deviating from preregistrations is to be avoided at all costs.
+
+You (and everyone else) will deviate from your preregistration.  
+The question is not if, but how much.
+---
+# Misunderstanding II:
+
+### Everything must be preregistered.
+
+> It is the view that a theory is nothing but a tool or an
+instrument for prediction. I have analysed and criticized it in my papers [...]
+.right[—Popper (2002), p. 37]
+I therefore wish to make it quite clear that I consider the theorist’s interest in explanation—that is, in discovering explanatory theories—as irreducible to the [...] deduction of predictions.
+.right[—Popper (2002), p. 40]
+
+.footnote[
+Popper, K. R. (2002). The logic of scientific discovery. Routledge. http://public.eblib.com/choice/publicfullrecord.aspx?p=254228
+]
+
+---
+# Misunderstanding III:
+
+### This is to much work.
+
+The here presented paradigm of Preregistration as Code merely reorders the timeline of the research project.
+Coding and writing is shifted to before the data analysis.
+
+All the work for a separate preregistration no longer required.
+
+Simulating data is not strictly necessary, instead one can gather data (but not analyze it!) and obfuscate the relations by shuffling each column.
+
+---
+class: center, middle
+
+# Thanks!
+
+Slides created via the R packages:
+
+[xaringan](https://github.com/yihui/xaringan)<br>
+[gadenbuie/xaringanthemer](https://github.com/gadenbuie/xaringanthemer)
