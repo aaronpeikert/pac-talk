@@ -17,7 +17,7 @@ knitr::opts_chunk$set(
 <!-- badges: end -->
 
 This is a talk about Pregistration as Code (PAC).
-Here are the slides.
+Here are [the slides](https://github.com/aaronpeikert/pac-talk/files/7719895/Tools.for.Testing.Theories.pdf).
 
 First, we must understand why preregistration is supposed to work, than we can understand why PAC is working better than verbal preregistration.
 
