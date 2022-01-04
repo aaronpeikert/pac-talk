@@ -1,0 +1,180 @@
+---
+title: "Measures of Evidential Support"
+author: "Aaron Peikert"
+date: "1/4/2022"
+output: pdf_document
+header-includes:
+   - \usepackage{amsmath}
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(patchwork)
+```
+
+```{r, include=FALSE}
+# h1 = prior
+# eh = p(E|H)
+# enh = p(E|\neg{}H)
+
+bayes <- function(h1, eh, enh, ...) {
+  (h1 * eh) / (h1 * eh + (1 - h1) * enh)
+}
+# all formulas taken from Bayesian Philosophy of Science, p. 51
+# first letter = function name in Bayesian Philosophy of Science
+# optional letter = p for prime
+# second letter = m for measure
+measures <- list(
+  dm = list(
+    name = "Difference Measure",
+    formula = "d(H, E) = p(H|E) - p(H)",
+    fun = function(h1, eh, enh, ...) {
+      he <- bayes(h1, eh, enh)
+      he - h1
+    }
+  ),
+  rm = list(
+    name = "Log-Ratio Measure",
+    formula = "r(H, E) = log(\\frac{p(H|E)}{p(H)})",
+    fun = function(h1, eh, enh, ...) {
+      he <- bayes(h1, eh, enh)
+      log(he / h1)
+    }
+  ),
+  lm = list(
+    name = "Log-Likelihood Measure",
+    formula = "l(H, E) = log(\\frac{p(H|E)}{p(E|\\neg{}H)})",
+    fun = function(h1, eh, enh, ...) {
+      he <- bayes(h1, eh, enh)
+      log(he / enh)
+    }
+  ),
+  km = list(
+    name = "Kemeny–Oppenheim Measure",
+    formula = "k(H, E) = \\frac{p(E|H) - p(E|\\neg{}H)}{p(E|H) + p(E|\\neg{}H)}",
+    fun = function(h1, eh, enh, ...) {
+      (eh - enh) / (eh + enh)
+    }
+  ),
+  zm = list(
+    name = "Generalized Entailment Measure",
+    formula =
+      "z(H, E) =\\begin{cases}
+  \\frac{p(E|H) - p(H)}{1 - p(H)}, & \\text{if } p(H|E) \\geq{} p(H) \\\\
+  \\frac{p(E|H) - p(H)}{p(H)}, & \\text{if } p(H|E) < p(H)
+\\end{cases}",
+fun = function(h1, eh, enh, ...) {
+  he <- bayes(h1, eh, enh)
+  ifelse(he >= h1, (he - h1)/(1 - h1), (he - h1)/h1)
+}
+  ),
+sm = list(
+  name = "Christensen–Joyce Measure",
+  formula = "s(H, E) = p(H|E) - p(H|\\neg{}E)",
+  fun = function(h1, eh, enh, ...) {
+    he <- bayes(h1, eh, enh)
+    e <- h1 * eh + (1 - h1) * enh
+    hne <- (h1 * (1 - eh)) / (1 - e)
+    he - hne
+  }
+),
+cpm = list(
+  name = "Carnap’s Relevance Measure",
+  formula = "c'(H, E) = p(E)(p(H|E) - p(H))",
+  fun = function(h1, eh, enh, ...) {
+    he <- bayes(h1, eh, enh)
+    e <- h1 * eh + (1 - h1) * enh
+    e * (he - h1)
+  }
+),
+rpm = list(
+  name = "Rips Measure",
+  formula = "r'(H, E) = 1 - \\frac{p(\\neg{}H|E)}{p(\\neg{}H)}",
+  fun = function(h1, eh, enh, ...) {
+    he <- bayes(h1, eh, enh)
+    1 - (1 - he) / (1 - h1)
+  }
+)
+)
+
+measures <- tibble(!!!transpose(measures)) %>% 
+  mutate(name = simplify(name, "chr"),
+         formula = simplify(formula, "chr"))
+
+uncertainly <- function(fun, n = 1e5, seed = NULL){
+  function(h1, eh, enh){
+    if(!is.null(seed)){
+      if(exists(".Random.seed"))on.exit(set.seed(.Random.seed))
+      set.seed(seed)
+    }
+    enh_samples <- runif(n, enh, 1)
+    mean(fun(h1, eh, enh_samples))
+  }
+}
+```
+
+```{r, echo=FALSE}
+select(measures, -fun) %>% 
+  mutate(formula = str_c("$", formula, "$")) %>% 
+  pander::pander()
+```
+
+```{r, cache=TRUE, echo=FALSE}
+step <- 0.01
+
+grid <- tidyr::expand_grid(
+    h1 = .1,
+    eh = .8,
+    enh = seq(step, 1 - step, step)
+  )
+apply_on_grid <- function(f, grid) {
+  mutate(grid,
+         certain = pmap_dbl(grid, f),
+         uncertain = pmap_dbl(grid, uncertainly(f, seed = .Random.seed)))
+}
+
+results <- mutate(measures, results = map(fun, apply_on_grid, grid)) %>% 
+  select(-fun) %>% 
+  unnest(results) %>% 
+  pivot_longer(c(certain, uncertain),
+               names_to = "certainty",
+               values_to = "value")
+```
+
+
+```{r, echo=FALSE, dev = "cairo_pdf"}
+# results %>%
+#   split(., .$name) %>%
+#   imap( ~ ggplot(.x, aes(enh, value, color = certainty)) +
+#           geom_line() +
+#           annotate("text", x = Inf, y = Inf, label = .y) +
+#           theme_minimal()) %>% 
+#   reduce(`+`) +
+#   plot_layout(ncol = 1, guides = 'collect')
+
+results %>%
+  ggplot(aes(enh, value, color = certainty)) +
+  geom_line() +
+  geom_text(
+    data = measures,
+    aes(
+      x = Inf,
+      y = Inf,
+      label = name,
+      hjust = 1,
+      vjust = 1.1
+    ),
+    size = 3,
+    color = "grey15",
+    inherit.aes = FALSE
+  ) +
+  theme_minimal() +
+  facet_grid(rows = vars(name),
+             scales = "free_y") +
+  theme(strip.background = element_blank(),
+        strip.text = element_blank(),
+        axis.title.y = element_blank()) +
+  labs(x = "p(E|¬H)", 
+       caption = "H1 = .1, power = .8")
+```
+
