@@ -43,10 +43,9 @@ measures <- list(
   ),
   lm = list(
     name = "Log-Likelihood Measure",
-    formula = "l(H, E) = log(\\frac{p(H|E)}{p(E|\\neg{}H)})",
+    formula = "l(H, E) = log(\\frac{p(E|H)}{p(E|\\neg{}H)})",
     fun = function(h1, eh, enh, ...) {
-      he <- bayes(h1, eh, enh)
-      log(he / enh)
+      log(eh / enh)
     }
   ),
   km = list(
